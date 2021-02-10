@@ -30,13 +30,15 @@ import base64
 import zlib
 import datetime as dt
 
+import nest_asyncio
+nest_asyncio.apply()
 
 
 
-# proxies={
-#     'http': 'socks5://127.0.0.1:1080',
-#     'https': 'socks5://127.0.0.1:1080'
-# }
+proxies={
+    'http': 'socks5://127.0.0.1:1087',
+    'https': 'socks5://127.0.0.1:1087'
+}
 
 
 # 获得K线数据
@@ -48,6 +50,10 @@ url = "https://www.okex.com/api/spot/v3/instruments/{instrument_id}/candles?" \
                                         end="2019-03-20T16:00:00.000Z",
                                         )
 print(url)
+
+res = requests.get(url)
+res = requests.get(url, proxies = proxies)
+print(res.text)
 
 
 
@@ -63,18 +69,31 @@ if __name__=="__main__":
     secret_key = account_info['secretkey']
     passphrase = account_info['passphrase']
     
-    accountAPI = account.AccountAPI(api_key, secret_key, passphrase, False)    
-    indexAPI = index.IndexAPI(api_key, secret_key, passphrase, False)
+    proxies = {
+        "http": "socks5://127.0.0.1:1086",
+        "https": "socks5://127.0.0.1:1086",
+    }
 
-    channels = ["spot/candle60s:BTC-USDT"]
-    loop = asyncio.get_event_loop()
+    # accountAPI = account.AccountAPI(api_key, secret_key, passphrase, False)    
+    # indexAPI = index.IndexAPI(api_key, secret_key, passphrase, False)
 
-    # 公共数据 不需要登录（行情，K线，交易数据，资金费率，限价范围，深度数据，标记价格等频道）
-    loop.run_until_complete(wbe.subscribe_without_login(url, channels))
+    spotAPI = spot.SpotAPI(api_key, secret_key, passphrase, False)
+    result = spotAPI.get_kline(instrument_id='BTC-USDT', start='2019-03-19T16:00:00.000Z',
+                               end='2019-03-20T16:00:00.000Z', granularity='86400')
+
+
+    # # wesockets 测试
+    # url = 'wss://real.okex.com:8443/ws/v3'
+    # channels = ["spot/candle60s:BTC-USDT"]
     
-    loop.close()
+    # loop = asyncio.get_event_loop()
+
+    # # 公共数据 不需要登录（行情，K线，交易数据，资金费率，限价范围，深度数据，标记价格等频道）
+    # loop.run_until_complete(wbe.subscribe_without_login(url, channels))
+    
+    # loop.close()
 
     
     
-    
+
     

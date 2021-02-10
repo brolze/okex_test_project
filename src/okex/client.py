@@ -5,7 +5,8 @@ from . import consts as c, utils, exceptions
 
 class Client(object):
 
-    def __init__(self, api_key, api_secret_key, passphrase, use_server_time=False, test=False, first=False):
+    def __init__(self, api_key, api_secret_key, passphrase, use_server_time=False, 
+                 test=False, first=False,proxies=None):
 
         self.API_KEY = api_key
         self.API_SECRET_KEY = api_secret_key
@@ -13,6 +14,7 @@ class Client(object):
         self.use_server_time = use_server_time
         self.first = first
         self.test = test
+        self.proxies=proxies
 
     def _request(self, method, request_path, params, cursor=False):
         if method == c.GET:
@@ -37,6 +39,7 @@ class Client(object):
         if self.first:
             print("url:", url)
             self.first = False
+        
 
         print("url:", url)
         # print("headers:", header)
@@ -45,11 +48,11 @@ class Client(object):
         # send request
         response = None
         if method == c.GET:
-            response = requests.get(url, headers=header)
+            response = requests.get(url, headers=header,proxies=self.proxies)
         elif method == c.POST:
-            response = requests.post(url, data=body, headers=header)
+            response = requests.post(url, data=body, headers=header,proxies=self.proxies)
         elif method == c.DELETE:
-            response = requests.delete(url, headers=header)
+            response = requests.delete(url, headers=header,proxies=self.proxies)
 
         # exception handle
         if not str(response.status_code).startswith('2'):
