@@ -36,24 +36,27 @@ nest_asyncio.apply()
 
 
 proxies={
-    'http': 'socks5://127.0.0.1:1087',
-    'https': 'socks5://127.0.0.1:1087'
+    'http': 'http://127.0.0.1:1087',
+    'https': 'https://127.0.0.1:1087'
 }
 
 
-# 获得K线数据
-url = "https://www.okex.com/api/spot/v3/instruments/{instrument_id}/candles?" \
-    "granularity={granularity}&start={start}&end={end}".format(
-                                        instrument_id="BTC-USDT",
-                                        granularity="86400", #间隔时间
-                                        start="2019-03-19T16:00:00.000Z",
-                                        end="2019-03-20T16:00:00.000Z",
-                                        )
-print(url)
+res = requests.get("https://www.google.com", proxies = proxies)
+print(res)
 
-res = requests.get(url)
-res = requests.get(url, proxies = proxies)
-print(res.text)
+# # 获得K线数据
+# url = "https://www.okex.com/api/spot/v3/instruments/{instrument_id}/candles?" \
+#     "granularity={granularity}&start={start}&end={end}".format(
+#                                         instrument_id="BTC-USDT",
+#                                         granularity="86400", #间隔时间
+#                                         start="2019-03-19T16:00:00.000Z",
+#                                         end="2019-03-20T16:00:00.000Z",
+#                                         )
+# print(url)
+
+# # res = requests.get(url)
+# res = requests.get(url, proxies = proxies)
+# print(res.text)
 
 
 
