@@ -6,7 +6,7 @@ from . import consts as c, utils, exceptions
 class Client(object):
 
     def __init__(self, api_key, api_secret_key, passphrase, use_server_time=False, 
-                 test=False, first=False,proxies=None):
+                 test=False, first=False):
 
         self.API_KEY = api_key
         self.API_SECRET_KEY = api_secret_key
@@ -14,13 +14,17 @@ class Client(object):
         self.use_server_time = use_server_time
         self.first = first
         self.test = test
-        self.proxies=proxies
+        self.proxies={
+        'http': 'http://127.0.0.1:1080',
+        'https': 'https://127.0.0.1:1080'
+        }
 
     def _request(self, method, request_path, params, cursor=False):
         if method == c.GET:
             request_path = request_path + utils.parse_params_to_str(params)
         # url
         url = c.API_URL + request_path
+#        print("request url: %s"%url)
 
         # 获取本地时间
         timestamp = utils.get_timestamp()
