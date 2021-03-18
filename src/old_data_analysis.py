@@ -3,6 +3,19 @@
 Created on Mon Feb 22 22:21:37 2021
 
 @author: xujianqiao
+
+思路大概是这样的。
+Simulator 是模拟器，主要是管把数据一条一条吐出来，让 strategy 给判断后进行相应操作，需要统计买卖节点、手续费、资金收益率，绘图等
+Strategy 吃各种信息，给出判断
+Event 用于产生各种信息后，给 Strategy 判断，event 吃 simulator 的输入后，统计各种指标（平均，标准差各种），然后作为一个input给 strategy。
+    event的功能是各种strategy获取指标是从一个标准接口来的，不用重复计算了
+    
+力求每日更新一点~
+
+3-15：补了道氏策略的一些代码，增加了波峰波谷的判断逻辑
+3-18：调试完成 道氏策略 action 部分，初步构建 simulator 对action的反应  
+
+
 """
 
 import numpy as np
@@ -26,7 +39,7 @@ import plotly
     
 # 币、股波动模拟器
 class Simulator():
-    def __init__(self,stock_data,hand_money,time_col,open_col,close_col,high,low,volume):
+    def __init__(self,stock_data,hand_money,time_col,open_col,close_col,high,low,volume,handling_fee=0.001):
         self.stock_data = stock_data
         self.hand_money = hand_money #手上的钱
         self.hold_share = 0 # 手上的股
@@ -38,6 +51,7 @@ class Simulator():
         self.high = high # 最高价
         self.low = low #最低价
         self.volume = volume #成交量
+        self.handling_fee = handling_fee 
         
         self.price_col = self.close_col # 收盘价作为主价格
         
@@ -53,7 +67,11 @@ class Simulator():
         # 数据初始化
         self._data_fill_na() #空数据填充
         self._records_merge()
-        self._add_mv(self.stock_data,self.price_col,periods=[3,5,10])
+        # self._add_mv(self.stock_data,self.price_col,periods=[3,5,10])
+        
+        
+        # Event初始化
+        self.event_eng = Event() #事件引擎
         
     # 缺失值填充，尽量先用前面的数据填，但缺失太多则往中间靠拢
     def _data_fill_na(self):
@@ -102,54 +120,143 @@ class Simulator():
     
     # 根据各类指标做一个决策，买、卖或持有
     def ask_decision(self,strategy):
-        str_instance = strategy()
-        
         for i in range(self.stock_data.shape[0]):
             row = self.stock_data.iloc[i,:]
             row.index = row.index.to_series().apply(lambda x: self.col_map[x] if x in self.col_map.keys() else x)
-            row = row.to_dict()
-            evt = Event(row)
-            str_instance(evt)
+            evt = self.event_eng.get_info(row) # event 引擎获取一个数据
+            action = strategy.action(self.event_eng.export_event()) # event加工后把数据给 strategy
             
+            if action[2] is not None:
+                amount = self.hand_money*action[2]
+                self.do_action(action[0],amount)
+            
+            
+            # 测试
+            if i>100:
+                break
             
             if i%1000==0:
                 print(i)
+                
+    # 执行一个操作，买卖或持有，买卖可以用手或者
+    def do_action(action=None,volumn=None,amount=None):
+        '''
+        Parameters
+        ----------
+        action : String, optional
+            默认为不做操作，可接受值 buy , sell . The default is None.
+        volumn : float, optional
+            币数，买1个币或卖一个币. The default is None.
+        amount : float, optional
+            金额，买多少钱或卖多少钱. The default is None.
+
+        Returns
+        -------
+        None.
+
+        '''
+        pass
+    
             
         
-
-
 # 咨询事件，咨询策略得到结果
 class Event():
-    def __init__(self,init_json):
-        self.data = init_json
+    def __init__(self):
+        self.data_points = []
+    
+    # 获取一个数据点
+    def get_info(self,datapoint):
+        self.data_points.append(datapoint)
+        
 
+    # 输出一个event
+    def export_event(self):
+        self._mv() # 增加均线信息
+        
+        return self.data_points[-1]
+    
+    # 平均数
+    def _mv(self,periods=[3,5,10]):
+        for p in periods:
+            dp = pd.DataFrame(self.data_points[-p:])
+            mv = dp['close'].mean()
+            self.data_points[-1]['mv_%s'%p] = mv
 
 # 一个策略
 class Stragegy():
     def __init__(self):
-        pass
+        self.actions = [] # 记录所有的操作
+        self.velocity = [] # 记录近期一个滑动窗口的时间
+    
+    
+    # 滑动窗口更新
+    def _velocity_refresh(self,data_point,velocity_length=5):
+        self.velocity.append(data_point)
+        if len(self.velocity)>velocity_length+1:
+            self.velocity.pop(0)
     
     # 根据获取的数据执行一个操作（买、卖或什么都不做）
-    def action(self,inputs):
-        print("no strategy init")
-        pass
+    def action(self,data_point):
+        self._velocity_refresh(data_point)
+
     
     
     
 # Dow 道式策略
 class DowStrategy(Stragegy):
     
-    def __init__(self):
-        Stragegy.__init__()
-        self.last_price_window = np.full([5],np.nan)
-        self.state_window = []
+    def __init__(self,price_as='mv_5'):
+        Stragegy.__init__(self)
+        self.peaks = []
+        self.bottoms = []
+        self.states = [] #每个点的趋势，仅跟上一个点对比
+        self.price_as = price_as # 使用什么数据来进行分析，比如使用近 mv_5 作为分析价格
     
-        # last_price_window = np.append(last_price_window,1)
-        # last_price_window = last_price_window[1:]
-    
-    def action(self):
-        pass
-
+    # 根据该数据点做一个是否买卖的判断
+    def action(self,data_point):
+        Stragegy.action(self,data_point) # 父类执行
+        is_judge_point = None
+        action = [None,None,None]
+        # 当前趋势
+        if len(self.velocity)>1:
+            curr_price = self.velocity[-1][self.price_as]
+            last_price = self.velocity[-2][self.price_as]
+            if curr_price-last_price>0:
+                curr_state = 'increase'
+            elif curr_price-last_price<0:
+                curr_state = 'decrease'
+            else:
+                curr_state = 'flat'
+            self.states.append(curr_state)
+            
+        if len(self.states)>1:
+            last_state = self.states[-2]
+            # 判断是否为波峰波谷
+            if last_state == 'increase' and curr_state == 'decrease':
+                self.peaks.append(self.velocity[-2])
+                is_judge_point=1
+                judge_last='peak'
+            elif last_state == 'decrease' and curr_state == 'increase':
+                self.bottoms.append(self.velocity[-2])
+                is_judge_point=1
+                judge_last='peak'
+            
+        if len(self.peaks)>1 and len(self.bottoms)>1 and is_judge_point:
+            if judge_last=='bottom':
+                if self.peaks[-1][self.price_as] > self.peaks[-2][self.price_as] \
+                    and self.bottoms[-1][self.price_as] > self.bottoms[-2][self.price_as]:
+                    action = ['buy','l',1] # 买，做多，100% 
+                    
+            elif judge_last=='peak':
+                if self.peaks[-1][self.price_as] < self.peaks[-2][self.price_as] \
+                    and self.bottoms[-1][self.price_as] < self.bottoms[-2][self.price_as]:
+                    action = ['sell','l',1] # 卖，多单，100% 
+                    
+        if action[0] is not None:
+            self.actions.append([data_point,action])
+            
+        return action
+            
 
 
 if __name__=="__main__":
@@ -166,17 +273,26 @@ if __name__=="__main__":
     
     
     # 策略，对于任何一个candle，应该返回买入，卖出或不做操作
-    data_2020 = pd.read_excel("data/kaggle/history_btcdata_2020.xlsx",engine="openpyxl",index_col=0)
-    
+    # data_2020 = pd.read_excel("data/kaggle/history_btcdata_2020.xlsx",engine="openpyxl",index_col=0)
     
     tmp = data_2020.head(100000)
-    stragety = Stragegy()
-    
     tmp.reset_index(inplace=True)
-    sim = Simulator(tmp,5000,'str_time','Open','Close','High','Low','Volume_(BTC)')
-    sim.ask_decision(stragety)
     
-    tmp = sim.stock_data
+    # 模拟器
+    sim = Simulator(tmp,5000,'str_time','Open','Close','High','Low','Volume_(BTC)')
+    
+    # 策略
+    strategy = DowStrategy()
+    
+    sim.ask_decision(strategy)
+    
+    eng = sim.event_eng
+    eng
+    
+
+    
+    
+    # tmp = sim.stock_data
     
     last_price_window = np.full([5],np.nan)
 
