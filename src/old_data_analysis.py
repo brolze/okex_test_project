@@ -7,8 +7,15 @@ Created on Mon Feb 22 22:21:37 2021
 思路大概是这样的。
 Simulator 是模拟器，主要是管把数据一条一条吐出来，让 strategy 给判断后进行相应操作，需要统计买卖节点、手续费、资金收益率，绘图等
 Strategy 吃各种信息，给出判断
-Event 用于产生各种信息后，给 Strategy 判断，event 吃 simulator 的输入后，统计各种指标（平均，标准差各种），然后作为一个input给 strategy。
+Event 用于产生各种信息后，给 Strategy 判断，event 吃 simulator 的输后，统计各种指标（平均，标准差各种），然后作为一个input给 strategy。
     event的功能是各种strategy获取指标是从一个标准接口来的，不用重复计算了
+    
+Action 买卖的行为。先不写类了，用列表，约定一下。
+    0:buy、sell，字符串，买或卖
+    1:l、s ，做多、做空
+    2: 0~1 买/卖百分之多少，如果是做多买，就是按照手上的余钱计算，如果是卖就按照手上的币算
+    3: 金额，如果不提供百分比，可以提供买多少钱的
+    4: 手, 如果不提供百分比或金额，可以提供买多少个币
     
 力求每日更新一点~
 
@@ -39,7 +46,7 @@ import plotly
     
 # 币、股波动模拟器
 class Simulator():
-    def __init__(self,stock_data,hand_money,time_col,open_col,close_col,high,low,volume,handling_fee=0.001):
+    def __init__(self,stock_data,hand_money,time_col,open_col,close_col,high,low,volume,handling_fee=0.001,guarantee_rate=1):
         self.stock_data = stock_data
         self.hand_money = hand_money #手上的钱
         self.hold_share = 0 # 手上的股
@@ -51,7 +58,8 @@ class Simulator():
         self.high = high # 最高价
         self.low = low #最低价
         self.volume = volume #成交量
-        self.handling_fee = handling_fee 
+        self.handling_fee = handling_fee  # 币交易买卖都有手续费，有点淦
+        self.guarantee_rate = guarantee_rate #保证金率，默认没有杠杆，即保证金率为 100%
         
         self.price_col = self.close_col # 收盘价作为主价格
         
@@ -117,6 +125,15 @@ class Simulator():
     def _add_mv(df,col,periods=[5]):
         for p in periods:
             df['mv_%s'%p] = df[col].rolling(p).mean()
+            
+    
+    # 动作参数解析，需要根据当前持仓情况理解动作，比如手上有多少钱，有多少币之类的信息
+    def _action_parse(action): # TODO
+        if action[1] == 'l': # 买多、平多
+            if action[0] == 'buy': #买多
+                pass
+                
+    
     
     # 根据各类指标做一个决策，买、卖或持有
     def ask_decision(self,strategy):
@@ -128,7 +145,7 @@ class Simulator():
             
             if action[2] is not None:
                 amount = self.hand_money*action[2]
-                self.do_action(action[0],amount)
+                self.do_action(row[self.price_col],action[0],amount)
             
             
             # 测试
@@ -139,14 +156,14 @@ class Simulator():
                 print(i)
                 
     # 执行一个操作，买卖或持有，买卖可以用手或者
-    def do_action(action=None,volumn=None,amount=None):
+    def do_action(self,price,action=None,amount=None):
         '''
         Parameters
         ----------
         action : String, optional
             默认为不做操作，可接受值 buy , sell . The default is None.
         volumn : float, optional
-            币数，买1个币或卖一个币. The default is None.
+            币数，买1个币或卖1个币. The default is None.
         amount : float, optional
             金额，买多少钱或卖多少钱. The default is None.
 
@@ -155,8 +172,13 @@ class Simulator():
         None.
 
         '''
-        pass
-    
+        if action == 'buy':
+            self.hand_money -= amount*(1+self.handling_fee) # 去掉手续费
+            self.hold_share += amount/price
+            
+        elif action == 'sell':
+            self.hold_share -= amount/price
+            self.hand_money += amount*(1-self.handling_fee) # 去掉手续费
             
         
 # 咨询事件，咨询策略得到结果
@@ -257,6 +279,14 @@ class DowStrategy(Stragegy):
             
         return action
             
+
+# 欣培 策略
+class XpStrategy(Stragegy):
+    
+    def __init__(self,price_as='mv_5'):
+        Stragegy.__init__(self)
+        pass
+
 
 
 if __name__=="__main__":
